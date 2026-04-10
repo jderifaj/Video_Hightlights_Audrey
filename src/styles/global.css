@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@theme {
+  --color-courage-navy: #002D56;
+  --color-courage-red: #E31837;
+  --color-courage-blue: #00A3E0;
+}
