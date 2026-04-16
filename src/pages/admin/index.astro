@@ -1,0 +1,38 @@
+---
+export const prerender = false;
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Dashboard">
+  <h1 class="page-title">Dashboard</h1>
+  <p class="page-sub">Changes commit to GitHub and trigger a Netlify rebuild (~2 min).</p>
+
+  <div class="cards">
+    <a href="/admin/player" class="card">
+      <div class="card-icon">👤</div>
+      <div class="card-label">Player Info</div>
+      <div class="card-desc">Edit name, GPA, height, major, honors</div>
+    </a>
+    <a href="/admin/videos" class="card">
+      <div class="card-icon">🎬</div>
+      <div class="card-label">Videos</div>
+      <div class="card-desc">Add, remove, and manage highlight clips</div>
+    </a>
+  </div>
+</AdminLayout>
+
+<style>
+  .page-title { font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 0.25rem; }
+  .page-sub   { font-size: 0.85rem; color: #64748b; margin-bottom: 2rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+  .card {
+    display: block; padding: 1.75rem;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 1rem; text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .card:hover { border-color: #00a3e0; background: rgba(0,163,224,0.06); }
+  .card-icon  { font-size: 2rem; margin-bottom: 0.75rem; }
+  .card-label { font-size: 1rem; font-weight: 600; color: #f1f5f9; margin-bottom: 0.25rem; }
+  .card-desc  { font-size: 0.8rem; color: #64748b; }
+</style>

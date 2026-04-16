@@ -1,0 +1,100 @@
+---
+export const prerender = false;
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import player from '../../data/player.json';
+
+const success = Astro.url.searchParams.get('success');
+const error   = Astro.url.searchParams.get('error');
+---
+
+<AdminLayout title="Player Info">
+  <h1 class="page-title">Player Info</h1>
+  <p class="page-sub">Save commits to GitHub and triggers a site rebuild.</p>
+
+  {success && <div class="alert-ok">✓ Saved — site rebuild triggered. Changes live in ~2 min.</div>}
+  {error   && <div class="alert-err">✗ Save failed. Check that your GitHub env vars are set correctly.</div>}
+
+  <form method="POST" action="/api/player">
+
+    <div class="section-card">
+      <p class="section-heading">Identity</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="name">Full Name</label>
+          <input id="name" name="name" type="text" value={player.name} required />
+        </div>
+        <div class="field">
+          <label for="classYear">Class Year</label>
+          <input id="classYear" name="classYear" type="text" value={player.classYear} />
+        </div>
+        <div class="field">
+          <label for="team">Team</label>
+          <input id="team" name="team" type="text" value={player.team} />
+        </div>
+        <div class="field">
+          <label for="coach">Coach</label>
+          <input id="coach" name="coach" type="text" value={player.coach} />
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <p class="section-heading">Academic</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="gpa">GPA</label>
+          <input id="gpa" name="gpa" type="text" value={player.gpa} />
+        </div>
+        <div class="field">
+          <label for="height">Height</label>
+          <input id="height" name="height" type="text" value={player.height} />
+        </div>
+        <div class="field full-width">
+          <label for="major">Major / Intended Major</label>
+          <input id="major" name="major" type="text" value={player.major} />
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <p class="section-heading">Honors & Achievements</p>
+      <p class="hint" style="margin-bottom:1rem">One achievement per line.</p>
+      <div class="field" id="honors-list">
+        {player.honors.map((h) => (
+          <div class="honor-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+            <input name="honors" type="text" value={h} style="flex:1" />
+            <button type="button" class="btn-danger" onclick="this.closest('.honor-row').remove()">✕</button>
+          </div>
+        ))}
+      </div>
+      <button type="button" class="btn-add" onclick="addHonor()">+ Add Achievement</button>
+    </div>
+
+    <button type="submit" class="btn-primary">Save & Commit to GitHub</button>
+  </form>
+</AdminLayout>
+
+<style>
+  .page-title { font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 0.25rem; }
+  .page-sub   { font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem; }
+  .btn-add    {
+    padding: 0.45rem 1rem; border-radius: 0.5rem;
+    background: none; border: 1px dashed rgba(255,255,255,0.15);
+    color: #94a3b8; font-size: 0.82rem; cursor: pointer; margin-top: 0.25rem;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-add:hover { border-color: #00a3e0; color: #00a3e0; }
+</style>
+
+<script is:inline>
+  function addHonor() {
+    const list = document.getElementById('honors-list');
+    const row  = document.createElement('div');
+    row.className = 'honor-row';
+    row.style.cssText = 'display:flex;gap:0.5rem;margin-bottom:0.5rem';
+    row.innerHTML = `<input name="honors" type="text" style="flex:1;padding:0.6rem 0.85rem;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:0.5rem;color:#f1f5f9;font-size:0.9rem;outline:none;" placeholder="New achievement..." />
+      <button type="button" class="btn-danger" onclick="this.closest('.honor-row').remove()" style="padding:0.4rem 0.8rem;background:none;border:1px solid rgba(239,68,68,0.4);border-radius:0.5rem;color:#f87171;font-size:0.8rem;cursor:pointer;">✕</button>`;
+    list?.appendChild(row);
+    /** @type {HTMLInputElement|null} */ (row.querySelector('input'))?.focus();
+  }
+</script>
