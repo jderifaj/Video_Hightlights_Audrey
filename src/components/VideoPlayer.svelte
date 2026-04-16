@@ -1,7 +1,58 @@
 <script>
+  import { onDestroy } from 'svelte';
+
   export let activeVideo;
+  export let autoplay = true;
+  export let ondurationload = null;
+  export let onnexttrack = null;
+  export let ontimeupdate = null;
+
+  let videoEl;
+  let rafId = null;
 
   $: isYoutube = activeVideo?.url?.includes('youtube.com/embed/');
+
+  $: if (autoplay && videoEl && videoEl.paused && videoEl.readyState >= 2) {
+    videoEl.play().catch(() => {});
+  }
+
+  function startProgressLoop() {
+    if (typeof requestAnimationFrame === 'undefined') return;
+    cancelAnimationFrame(rafId);
+    function tick() {
+      if (videoEl && isFinite(videoEl.duration)) {
+        ontimeupdate?.({ percent: (videoEl.currentTime / videoEl.duration) * 100 });
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stopProgressLoop() {
+    if (typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  onDestroy(stopProgressLoop);
+
+  function handleLoadedMetadata() {
+    if (!videoEl || !activeVideo) return;
+    const secs = videoEl.duration;
+    if (isFinite(secs)) {
+      const m = Math.floor(secs / 60);
+      const s = String(Math.floor(secs % 60)).padStart(2, '0');
+      ondurationload?.({ url: activeVideo.url, duration: `${m}:${s}` });
+    }
+    startProgressLoop();
+    if (autoplay) {
+      videoEl.play().catch(() => {});
+    }
+  }
+
+  function handleEnded() {
+    stopProgressLoop();
+    if (autoplay) onnexttrack?.();
+  }
 </script>
 
 <div class="relative w-full rounded-2xl overflow-hidden bg-slate-900 shadow-2xl aspect-video border border-slate-800">
@@ -9,25 +60,24 @@
     {#if isYoutube}
       <iframe
         class="w-full h-full object-cover"
-        src="{activeVideo.url}?autoplay=1&rel=0"
+        src="{activeVideo.url}?autoplay={autoplay ? 1 : 0}&rel=0"
         title={activeVideo.title}
         frameborder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen
       ></iframe>
     {:else}
-      <video 
+      <video
+        bind:this={videoEl}
         class="w-full h-full object-cover"
-        src={activeVideo.url} 
-        controls 
-        autoplay
+        src={activeVideo.url}
+        controls
         poster={activeVideo.thumb}
+        on:loadedmetadata={handleLoadedMetadata}
+        on:ended={handleEnded}
       >
         <track kind="captions" />
       </video>
-      <div class="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-white text-sm font-semibold tracking-wide border border-white/10 z-10 transition-all opacity-0 peer-hover:opacity-100 pointer-events-none">
-        {activeVideo.title}
-      </div>
     {/if}
   {:else}
     <div class="w-full h-full flex flex-col items-center justify-center text-slate-500">

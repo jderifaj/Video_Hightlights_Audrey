@@ -1,74 +1,183 @@
 ---
-import VideoPlaylist from '../components/VideoPlaylist.svelte';
-import { videos, categories } from '../data/videos.js';
-import '../styles/global.css';
+import VideoPlaylist from "../components/VideoPlaylist.svelte";
+import { videos, categories } from "../data/videos.js";
+import "../styles/global.css";
 ---
 
 <!doctype html>
 <html lang="en" class="dark">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="description" content="Soccer Recruiting video portfolio for Audrey Derifaj, Class of 2026." />
+		<meta
+			name="description"
+			content="Soccer Recruiting video portfolio for Audrey Derifaj, Class of 2026."
+		/>
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="generator" content={Astro.generator} />
 		<title>Audrey Derifaj | Soccer Recruiting</title>
-		<!-- Google Fonts for modern typography -->
-		<link rel="preconnect" href="https://fonts.googleapis.com">
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
 	</head>
-	<body class="bg-slate-950 text-slate-200 font-sans antialiased selection:bg-blue-500/30 selection:text-white min-h-screen flex flex-col">
-		
+	<body
+		class="bg-slate-950 text-slate-200 font-sans antialiased selection:bg-blue-500/30 selection:text-white min-h-screen flex flex-col"
+	>
 		<!-- Header / Hero Section -->
-		<header class="relative overflow-hidden border-b border-white/5 py-16 md:py-24">
+		<header
+			class="relative overflow-hidden border-b border-white/5 py-10 md:py-14"
+		>
 			<!-- Background effects -->
 			<div class="absolute inset-0 z-0">
-				<div class="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-courage-navy/40 blur-[120px]"></div>
-				<div class="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-courage-red/20 blur-[120px]"></div>
-				<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?q=80&w=2000&auto=format&fit=crop')] bg-cover bg-center opacity-[0.03]"></div>
-			</div>
-			
-			<div class="container mx-auto px-6 relative z-10 text-center max-w-4xl">
-				<div class="flex flex-wrap gap-4 justify-center mb-6">
-					<span class="inline-block py-1 px-3 rounded-full bg-courage-navy/50 text-courage-blue text-xs font-semibold tracking-wider uppercase border border-courage-blue/30 shadow-sm shadow-courage-blue/10">
-						Class of 2026
-					</span>
-					<span class="inline-block py-1 px-3 rounded-full bg-courage-red/20 text-red-300 text-xs font-semibold tracking-wider uppercase border border-courage-red/40 shadow-sm shadow-courage-red/10">
-						Elite Engine (8th in NC XC)
-					</span>
+				<div
+					class="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-courage-navy/40 blur-[120px]"
+				>
 				</div>
-				<h1 class="text-5xl md:text-7xl font-bold text-white mb-6 tracking-tight flex flex-col md:flex-row items-center justify-center gap-4">
-					<img src="/images/North_Carolina_Courage_logo.svg" alt="NC Courage Logo" class="h-16 md:h-20 w-auto drop-shadow-[0_0_15px_rgba(227,24,55,0.3)]" />
-					<span>Audrey <span class="text-transparent bg-clip-text bg-gradient-to-r from-courage-blue to-white">Derifaj</span></span>
-				</h1>
-				<p class="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
-					U16 NC Courage Academy • Coached by Kendell Fletcher White<br/>
-					Holder of all-time HS 3KM and 5KM records with exceptional stamina.
-				</p>
+				<div
+					class="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-courage-red/20 blur-[120px]"
+				>
+				</div>
+				<div
+					class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?q=80&w=2000&auto=format&fit=crop')] bg-cover bg-center opacity-[0.03]"
+				>
+				</div>
+			</div>
+
+			<div class="container mx-auto px-6 relative z-10 max-w-6xl">
+				<div class="flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
+
+					<!-- Left: Identity -->
+					<div class="flex-1 text-center lg:text-left">
+						<div class="flex flex-wrap gap-3 justify-center lg:justify-start mb-5">
+							<span
+								class="inline-block py-1 px-3 rounded-full bg-courage-navy/50 text-courage-blue text-xs font-semibold tracking-wider uppercase border border-courage-blue/30 shadow-sm shadow-courage-blue/10"
+							>
+								Class of 2029
+							</span>
+						</div>
+
+						<h1
+							class="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight flex flex-col md:flex-row items-center lg:justify-start justify-center gap-4"
+						>
+							<img
+								src="/images/North_Carolina_Courage_logo.svg"
+								alt="NC Courage Logo"
+								class="h-14 md:h-16 w-auto drop-shadow-[0_0_15px_rgba(227,24,55,0.3)]"
+							/>
+							<span
+								>Audrey <span
+									class="text-transparent bg-clip-text bg-linear-to-r from-courage-blue to-white"
+									>Derifaj</span
+								></span
+							>
+						</h1>
+
+						<p
+							class="text-base md:text-lg text-slate-400 leading-relaxed"
+						>
+							U16 NC Courage Academy • Coached by Kendell Fletcher White
+						</p>
+					</div>
+
+					<!-- Right: Stats + Honors -->
+					<div class="shrink-0 w-full lg:w-auto lg:min-w-75">
+
+						<!-- Stat blocks -->
+						<div class="fade-in-item flex gap-0 justify-center lg:justify-start mb-6 rounded-xl overflow-hidden border border-slate-700/60 divide-x divide-slate-700/60" style="animation-delay: 0.2s">
+							<div class="flex-1 text-center px-4 py-3 bg-slate-800/40">
+								<p class="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-500 mb-1">GPA</p>
+								<p class="text-2xl font-bold text-white">4.4</p>
+							</div>
+							<div class="flex-1 text-center px-4 py-3 bg-slate-800/40">
+								<p class="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-500 mb-1">Height</p>
+								<p class="text-2xl font-bold text-white">5' 2"</p>
+							</div>
+							<div class="flex-1 text-center px-4 py-3 bg-slate-800/40">
+								<p class="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-500 mb-1">Major</p>
+								<p class="text-xl font-bold text-white">Biology</p>
+							</div>
+						</div>
+
+						<!-- Honors & Achievements -->
+						<div class="bg-slate-800/30 border border-slate-700/50 rounded-xl p-4">
+							<h3 class="fade-in-item text-[10px] font-bold tracking-[0.2em] uppercase text-courage-red mb-3" style="animation-delay: 0.4s">
+								Honors &amp; Achievements
+							</h3>
+							<ul class="space-y-2">
+								<li class="fade-in-item flex items-start gap-2 text-sm text-slate-300" style="animation-delay: 0.55s">
+									<span class="text-courage-blue mt-1 text-[8px]">◆</span>
+									<span>Cary HS Cross Country All-time 3K &amp; 5K Record Holder</span>
+								</li>
+								<li class="fade-in-item flex items-start gap-2 text-sm text-slate-300" style="animation-delay: 0.7s">
+									<span class="text-courage-blue mt-1 text-[8px]">◆</span>
+									<span>2025 Top 10 Finisher — NC 7A Cross Country State Championships</span>
+								</li>
+								<li class="fade-in-item flex items-start gap-2 text-sm text-slate-300" style="animation-delay: 0.85s">
+									<span class="text-courage-blue mt-1 text-[8px]">◆</span>
+									<span>NC Courage Super Cup USL-U20 Academy Team Member</span>
+								</li>
+								<li class="fade-in-item flex items-start gap-2 text-sm text-slate-300" style="animation-delay: 1.0s">
+									<span class="text-courage-blue mt-1 text-[8px]">◆</span>
+									<span>Alpha Beta Club</span>
+								</li>
+								<li class="fade-in-item flex items-start gap-2 text-sm text-slate-300" style="animation-delay: 1.15s">
+									<span class="text-courage-blue mt-1 text-[8px]">◆</span>
+									<span>Cary Elementary Weekly Classroom Support Volunteer</span>
+								</li>
+							</ul>
+						</div>
+
+					</div>
+				</div>
 			</div>
 		</header>
 
 		<!-- Main Content Area -->
 		<main class="flex-grow py-12 md:py-16 px-4 sm:px-6">
-			<!-- Note: 'client:load' tells Astro to hydrate the Svelte component immediately -->
-			<VideoPlaylist videos={videos} categories={categories} client:load />
+			<VideoPlaylist
+				videos={videos}
+				categories={categories}
+				client:load
+			/>
 		</main>
 
 		<!-- Footer -->
-		<footer class="border-t border-white/5 py-8 mt-auto text-center text-slate-500 text-sm">
+		<footer
+			class="border-t border-white/5 py-8 mt-auto text-center text-slate-500 text-sm"
+		>
 			<div class="container mx-auto">
-				<p>Audrey Derifaj Recruiting &copy; {new Date().getFullYear()}</p>
-				<p class="mt-2 text-slate-600">Contact: audrey.soccer@example.com</p>
+				<p>
+					Audrey Derifaj Recruiting &copy; {new Date().getFullYear()}
+				</p>
+				<p class="mt-2 text-slate-600">
+					Contact: audrey.soccer@example.com
+				</p>
 			</div>
 		</footer>
-
 	</body>
 </html>
 
 <style is:global>
-	/* Using Inter font from Google Fonts globally */
 	body {
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
+	}
+
+	@keyframes fadeInUp {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.fade-in-item {
+		opacity: 0;
+		animation: fadeInUp 0.9s ease forwards;
 	}
 </style>
