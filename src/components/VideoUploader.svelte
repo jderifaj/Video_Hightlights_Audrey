@@ -31,38 +31,21 @@
     });
   }
 
-  // Fetches a URL and returns a same-origin blob URL (needed for JS files loaded by Workers)
-  async function toBlobURL(url, mimeType) {
-    const buf  = await fetch(url).then(r => r.arrayBuffer());
-    const blob = new Blob([buf], { type: mimeType });
-    return URL.createObjectURL(blob);
+  // Injects a <script> tag and resolves when loaded
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+      const s  = document.createElement('script');
+      s.src    = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error(`Failed to load: ${src}`));
+      document.head.appendChild(s);
+    });
   }
 
-  // Like toBlobURL but streams with progress updates (for large files like WASM)
-  async function downloadWithProgress(url, mimeType, onProgress) {
-    const res    = await fetch(url);
-    const total  = parseInt(res.headers.get('content-length') || '0');
-    const reader = res.body.getReader();
-    let received = 0;
-    const chunks = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.length;
-      if (total) onProgress(received / total);
-    }
-    return URL.createObjectURL(new Blob(chunks, { type: mimeType }));
-  }
-
-  // Reads a File into a Uint8Array for ffmpeg.writeFile()
-  async function fetchFile(file) {
-    return new Uint8Array(await file.arrayBuffer());
-  }
-
-  async function uploadFileToGitHub(blob, path, commitMessage) {
+  async function uploadFileToGitHub(data, path, commitMessage) {
     const form = new FormData();
-    form.append('file', new File([blob], path.split('/').pop()));
+    form.append('file', new File([data], path.split('/').pop()));
     form.append('path', path);
     form.append('message', commitMessage);
     const res = await fetch('/api/upload-hls-file', { method: 'POST', body: form });
@@ -79,49 +62,40 @@
       const slug = slugify(title.trim());
       const cats = categories.split(',').map(c => c.trim()).filter(Boolean);
 
-      // ── 1. Load ffmpeg-wasm from CDN (bypasses Vite bundling) ────────────
+      // ── 1. Load ffmpeg 0.11.6 via script tag (no Workers — runs in-page) ─
       status   = 'loading-ffmpeg';
       progress = 0;
-      message  = 'Loading FFmpeg module…';
+      message  = 'Loading FFmpeg…';
 
-      const { FFmpeg } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-      const ffmpeg     = new FFmpeg();
-      const ffmpegBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
-      const coreBase   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+      await loadScript('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js');
+      const { createFFmpeg, fetchFile } = window.FFmpeg;
 
-      // Shim blob that re-imports worker.js from CDN — avoids cross-origin Worker constructor
-      // restriction while still letting the browser resolve the real worker via CORS module import
-      const classWorkerURL = URL.createObjectURL(
-        new Blob([`import '${ffmpegBase}/worker.js'`], { type: 'text/javascript' })
-      );
+      const ffmpeg = createFFmpeg({
+        corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+        log: false,
+        progress: ({ ratio }) => {
+          if (status === 'loading-ffmpeg') {
+            progress = Math.round(ratio * 90);
+            message  = `Downloading FFmpeg WASM… ${Math.round(ratio * 100)}%`;
+          } else if (status === 'converting') {
+            progress = Math.round(ratio * 100);
+          }
+        },
+      });
 
-      message = 'Downloading FFmpeg core… (1 of 2)';
-      progress = 5;
-      const coreURL = await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript');
-
-      // Stream the ~30 MB WASM with real byte-level progress
-      const wasmURL = await downloadWithProgress(
-        `${coreBase}/ffmpeg-core.wasm`,
-        'application/wasm',
-        (p) => {
-          progress = Math.round(10 + p * 80);
-          message  = `Downloading FFmpeg WASM… ${Math.round(p * 100)}% (2 of 2)`;
-        }
-      );
-
-      message = 'Initializing FFmpeg…';
-      progress = 92;
-      await ffmpeg.load({ classWorkerURL, coreURL, wasmURL });
+      await ffmpeg.load();
       progress = 100;
 
-      // ── 2. Convert to HLS ────────────────────────────────────────────────
-      status  = 'converting';
-      message = 'Converting to HLS… (this may take a minute)';
+      // ── 2. Detect duration before we hand the file to ffmpeg ─────────────
+      const duration = formatDuration(await getVideoDuration(videoFile));
 
-      ffmpeg.on('progress', ({ progress: p }) => { progress = Math.round(p * 100); });
+      // ── 3. Convert to HLS ─────────────────────────────────────────────────
+      status   = 'converting';
+      progress = 0;
+      message  = 'Converting to HLS… (this may take a minute)';
 
-      await ffmpeg.writeFile('input.mp4', await fetchFile(videoFile));
-      await ffmpeg.exec([
+      await ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(videoFile));
+      await ffmpeg.run(
         '-i',    'input.mp4',
         '-c:v',  'libx264',
         '-preset', 'ultrafast',
@@ -131,29 +105,27 @@
         '-hls_time',             '4',
         '-hls_list_size',        '0',
         '-hls_segment_filename', 'seg%03d.ts',
-        'index.m3u8',
-      ]);
+        'index.m3u8'
+      );
 
-      const dir      = await ffmpeg.listDir('/');
-      const hlsFiles = dir.filter(e => !e.isDir && (e.name.endsWith('.m3u8') || e.name.endsWith('.ts')));
+      const hlsFiles = ffmpeg.FS('readdir', '/')
+        .filter(f => f.endsWith('.m3u8') || f.endsWith('.ts'));
 
-      // ── 3. Detect duration ───────────────────────────────────────────────
-      const duration = formatDuration(await getVideoDuration(videoFile));
-
-      // ── 4. Upload HLS files ──────────────────────────────────────────────
+      // ── 4. Upload HLS files to GitHub ─────────────────────────────────────
       status   = 'uploading';
       progress = 0;
       message  = `Uploading ${hlsFiles.length} HLS file(s) to GitHub…`;
 
       for (let i = 0; i < hlsFiles.length; i++) {
-        const { name } = hlsFiles[i];
+        const name = hlsFiles[i];
         message  = `Uploading ${name} (${i + 1} / ${hlsFiles.length})…`;
         progress = Math.round((i / hlsFiles.length) * 100);
-        await uploadFileToGitHub(await ffmpeg.readFile(name), `public/videos/${slug}/${name}`, `upload: HLS ${name} for "${title}"`);
+        const data = ffmpeg.FS('readFile', name);
+        await uploadFileToGitHub(data, `public/videos/${slug}/${name}`, `upload: HLS ${name} for "${title}"`);
       }
       progress = 100;
 
-      // ── 5. Upload thumbnail ──────────────────────────────────────────────
+      // ── 5. Upload thumbnail ───────────────────────────────────────────────
       let thumb = '/images/cross.png';
       if (thumbFile) {
         message = 'Uploading thumbnail…';
@@ -162,13 +134,13 @@
         thumb = `/images/${slug}-thumb.${ext}`;
       }
 
-      // ── 6. Register in videos.json ───────────────────────────────────────
-      status  = 'registering';
-      message = 'Saving to videos.json…';
+      // ── 6. Register in videos.json ────────────────────────────────────────
+      status   = 'registering';
+      message  = 'Saving to videos.json…';
       progress = 0;
 
       const res = await fetch('/api/register-video', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim(), categories: cats, url: `/videos/${slug}/index.m3u8`, thumb, duration }),
       });
@@ -220,7 +192,7 @@
         <label for="vu-video">Video File</label>
         <input id="vu-video" type="file" accept="video/*" required disabled={busy}
           on:change={e => videoFile = e.target.files[0]} />
-        <p class="hint">MP4 recommended. Converted to HLS in your browser — no server upload size limit.</p>
+        <p class="hint">MP4 recommended. Converted to HLS in your browser — no server size limit.</p>
       </div>
 
       <div class="field full-width">
