@@ -31,11 +31,28 @@
     });
   }
 
-  // Fetches a remote URL and returns a local blob URL — keeps WASM off Vite's bundle
+  // Fetches a URL and returns a same-origin blob URL (needed for JS files loaded by Workers)
   async function toBlobURL(url, mimeType) {
     const buf  = await fetch(url).then(r => r.arrayBuffer());
     const blob = new Blob([buf], { type: mimeType });
     return URL.createObjectURL(blob);
+  }
+
+  // Like toBlobURL but streams with progress updates (for large files like WASM)
+  async function downloadWithProgress(url, mimeType, onProgress) {
+    const res    = await fetch(url);
+    const total  = parseInt(res.headers.get('content-length') || '0');
+    const reader = res.body.getReader();
+    let received = 0;
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total) onProgress(received / total);
+    }
+    return URL.createObjectURL(new Blob(chunks, { type: mimeType }));
   }
 
   // Reads a File into a Uint8Array for ffmpeg.writeFile()
@@ -72,21 +89,28 @@
       const ffmpegBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
       const coreBase   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
 
-      // Each toBlobURL fetches the file from CDN — show progress so it doesn't look frozen
-      message = 'Downloading FFmpeg worker… (1 of 3)';
-      progress = 10;
-      const classWorkerURL = await toBlobURL(`${ffmpegBase}/worker.js`, 'text/javascript');
+      // Shim blob that re-imports worker.js from CDN — avoids cross-origin Worker constructor
+      // restriction while still letting the browser resolve the real worker via CORS module import
+      const classWorkerURL = URL.createObjectURL(
+        new Blob([`import '${ffmpegBase}/worker.js'`], { type: 'text/javascript' })
+      );
 
-      message = 'Downloading FFmpeg core… (2 of 3)';
-      progress = 30;
+      message = 'Downloading FFmpeg core… (1 of 2)';
+      progress = 5;
       const coreURL = await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript');
 
-      message = 'Downloading FFmpeg WASM (~30 MB)… (3 of 3)';
-      progress = 50;
-      const wasmURL = await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm');
+      // Stream the ~30 MB WASM with real byte-level progress
+      const wasmURL = await downloadWithProgress(
+        `${coreBase}/ffmpeg-core.wasm`,
+        'application/wasm',
+        (p) => {
+          progress = Math.round(10 + p * 80);
+          message  = `Downloading FFmpeg WASM… ${Math.round(p * 100)}% (2 of 2)`;
+        }
+      );
 
       message = 'Initializing FFmpeg…';
-      progress = 90;
+      progress = 92;
       await ffmpeg.load({ classWorkerURL, coreURL, wasmURL });
       progress = 100;
 
