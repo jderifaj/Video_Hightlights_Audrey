@@ -31,16 +31,9 @@
     });
   }
 
-  // Injects a <script> tag and resolves when loaded
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-      const s  = document.createElement('script');
-      s.src    = src;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error(`Failed to load: ${src}`));
-      document.head.appendChild(s);
-    });
+  // File → Uint8Array (replaces @ffmpeg/util fetchFile for local files)
+  async function toUint8Array(file) {
+    return new Uint8Array(await file.arrayBuffer());
   }
 
   async function uploadFileToGitHub(data, path, commitMessage) {
@@ -50,8 +43,8 @@
     form.append('message', commitMessage);
     const res = await fetch('/api/upload-hls-file', { method: 'POST', body: form });
     if (!res.ok) {
-      const { error } = await res.json().catch(() => ({}));
-      throw new Error(error ?? `Upload failed (${res.status})`);
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? `Upload failed (${res.status})`);
     }
   }
 
@@ -62,31 +55,42 @@
       const slug = slugify(title.trim());
       const cats = categories.split(',').map(c => c.trim()).filter(Boolean);
 
-      // ── 1. Load ffmpeg 0.11.6 via script tag (no Workers — runs in-page) ─
+      // ── 1. Load @ffmpeg/ffmpeg 0.12.x ────────────────────────────────────
+      //
+      // @ffmpeg/core@0.12.6 is the single-threaded build — no SharedArrayBuffer needed.
+      // Worker cross-origin restriction is bypassed by creating a same-origin blob that
+      // re-imports the real worker.js via a module import (CORS allowed by jsDelivr).
+      // coreURL / wasmURL are passed as raw CDN URLs so the worker fetches them via CORS
+      // rather than trying to import them from a main-thread blob (which breaks UMD exports).
+
       status   = 'loading-ffmpeg';
       progress = 0;
-      message  = 'Loading FFmpeg…';
+      message  = 'Loading FFmpeg module…';
 
-      await loadScript('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js');
-      const { createFFmpeg, fetchFile } = window.FFmpeg;
+      const FFMPEG = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+      const CORE   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
 
-      const ffmpeg = createFFmpeg({
-        corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
-        log: false,
-        progress: ({ ratio }) => {
-          if (status === 'loading-ffmpeg') {
-            progress = Math.round(ratio * 90);
-            message  = `Downloading FFmpeg WASM… ${Math.round(ratio * 100)}%`;
-          } else if (status === 'converting') {
-            progress = Math.round(ratio * 100);
-          }
-        },
+      const { FFmpeg } = await import(/* @vite-ignore */ `${FFMPEG}/index.js`);
+      const ffmpeg     = new FFmpeg();
+
+      // Blob shim that re-imports the real worker.js from CDN — stays same-origin
+      const classWorkerURL = URL.createObjectURL(
+        new Blob([`import '${FFMPEG}/worker.js'`], { type: 'text/javascript' })
+      );
+
+      progress = 20;
+      message  = 'Initializing FFmpeg (downloading ~30 MB first time, cached after)…';
+
+      await ffmpeg.load({
+        classWorkerURL,
+        coreURL: `${CORE}/ffmpeg-core.js`,
+        wasmURL: `${CORE}/ffmpeg-core.wasm`,
       });
 
-      await ffmpeg.load();
+      URL.revokeObjectURL(classWorkerURL);
       progress = 100;
 
-      // ── 2. Detect duration before we hand the file to ffmpeg ─────────────
+      // ── 2. Detect video duration (before handing file to ffmpeg) ──────────
       const duration = formatDuration(await getVideoDuration(videoFile));
 
       // ── 3. Convert to HLS ─────────────────────────────────────────────────
@@ -94,8 +98,12 @@
       progress = 0;
       message  = 'Converting to HLS… (this may take a minute)';
 
-      await ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(videoFile));
-      await ffmpeg.run(
+      ffmpeg.on('progress', ({ progress: p }) => {
+        progress = Math.round(p * 100);
+      });
+
+      await ffmpeg.writeFile('input.mp4', await toUint8Array(videoFile));
+      await ffmpeg.exec([
         '-i',    'input.mp4',
         '-c:v',  'libx264',
         '-preset', 'ultrafast',
@@ -105,11 +113,11 @@
         '-hls_time',             '4',
         '-hls_list_size',        '0',
         '-hls_segment_filename', 'seg%03d.ts',
-        'index.m3u8'
-      );
+        'index.m3u8',
+      ]);
 
-      const hlsFiles = ffmpeg.FS('readdir', '/')
-        .filter(f => f.endsWith('.m3u8') || f.endsWith('.ts'));
+      const hlsFiles = (await ffmpeg.listDir('/'))
+        .filter(e => !e.isDir && (e.name.endsWith('.m3u8') || e.name.endsWith('.ts')));
 
       // ── 4. Upload HLS files to GitHub ─────────────────────────────────────
       status   = 'uploading';
@@ -117,11 +125,14 @@
       message  = `Uploading ${hlsFiles.length} HLS file(s) to GitHub…`;
 
       for (let i = 0; i < hlsFiles.length; i++) {
-        const name = hlsFiles[i];
+        const { name } = hlsFiles[i];
         message  = `Uploading ${name} (${i + 1} / ${hlsFiles.length})…`;
         progress = Math.round((i / hlsFiles.length) * 100);
-        const data = ffmpeg.FS('readFile', name);
-        await uploadFileToGitHub(data, `public/videos/${slug}/${name}`, `upload: HLS ${name} for "${title}"`);
+        await uploadFileToGitHub(
+          await ffmpeg.readFile(name),
+          `public/videos/${slug}/${name}`,
+          `upload: HLS ${name} for "${title}"`
+        );
       }
       progress = 100;
 
@@ -130,7 +141,11 @@
       if (thumbFile) {
         message = 'Uploading thumbnail…';
         const ext = thumbFile.name.split('.').pop() || 'jpg';
-        await uploadFileToGitHub(thumbFile, `public/images/${slug}-thumb.${ext}`, `upload: thumbnail for "${title}"`);
+        await uploadFileToGitHub(
+          thumbFile,
+          `public/images/${slug}-thumb.${ext}`,
+          `upload: thumbnail for "${title}"`
+        );
         thumb = `/images/${slug}-thumb.${ext}`;
       }
 
@@ -142,7 +157,10 @@
       const res = await fetch('/api/register-video', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), categories: cats, url: `/videos/${slug}/index.m3u8`, thumb, duration }),
+        body: JSON.stringify({
+          title: title.trim(), categories: cats,
+          url: `/videos/${slug}/index.m3u8`, thumb, duration,
+        }),
       });
       if (!res.ok) throw new Error('Failed to register video in videos.json');
 
@@ -179,12 +197,14 @@
 
       <div class="field full-width">
         <label for="vu-title">Title</label>
-        <input id="vu-title" type="text" bind:value={title} placeholder="Nice Through Ball" required disabled={busy} />
+        <input id="vu-title" type="text" bind:value={title}
+          placeholder="Nice Through Ball" required disabled={busy} />
       </div>
 
       <div class="field full-width">
         <label for="vu-cats">Categories</label>
-        <input id="vu-cats" type="text" bind:value={categories} placeholder="passing, hustle" disabled={busy} />
+        <input id="vu-cats" type="text" bind:value={categories}
+          placeholder="passing, hustle" disabled={busy} />
         <p class="hint">Comma-separated. Filter buttons appear automatically.</p>
       </div>
 
@@ -225,12 +245,12 @@
   .progress-bar  { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
   .progress-fill { height: 100%; background: #3b82f6; border-radius: 3px; transition: width 0.3s ease; }
   .progress-pct  { font-size: 0.75rem; color: #475569; margin-top: 0.25rem; text-align: right; }
-  .alert-ok      { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25);
-                   color: #86efac; padding: 0.75rem 1rem; border-radius: 0.5rem;
-                   font-size: 0.875rem; display: flex; align-items: center; gap: 1rem; }
-  .alert-err     { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
-                   color: #fca5a5; padding: 0.75rem 1rem; border-radius: 0.5rem;
-                   font-size: 0.875rem; display: flex; align-items: center; gap: 1rem; }
+  .alert-ok  { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25);
+               color: #86efac; padding: 0.75rem 1rem; border-radius: 0.5rem;
+               font-size: 0.875rem; display: flex; align-items: center; gap: 1rem; }
+  .alert-err { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
+               color: #fca5a5; padding: 0.75rem 1rem; border-radius: 0.5rem;
+               font-size: 0.875rem; display: flex; align-items: center; gap: 1rem; }
   .btn-link      { background: none; border: none; color: inherit; text-decoration: underline;
                    cursor: pointer; padding: 0; font-size: inherit; opacity: 0.8; }
   .btn-link:hover { opacity: 1; }
