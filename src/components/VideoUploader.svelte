@@ -1,6 +1,5 @@
 <script>
-  // Status: idle | loading-ffmpeg | converting | uploading | registering | done | error
-  let status   = 'idle';
+  let status   = 'idle'; // idle | uploading | done | error
   let progress = 0;
   let message  = '';
   let errorMsg = '';
@@ -14,37 +13,58 @@
     return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
 
-  function formatDuration(secs) {
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+  // Encode a File/Blob to base64 in the browser (chunked to avoid stack overflow)
+  async function fileToBase64(file) {
+    const buf   = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary  = '';
+    const CHUNK = 8192;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
   }
 
-  function getVideoDuration(file) {
-    return new Promise((resolve) => {
-      const url = URL.createObjectURL(file);
-      const vid = document.createElement('video');
-      vid.preload = 'metadata';
-      vid.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(vid.duration); };
-      vid.onerror          = () => { URL.revokeObjectURL(url); resolve(0); };
-      vid.src = url;
+  // PUT a file directly to GitHub from the browser (bypasses Netlify's 6 MB function limit)
+  async function githubPut(path, base64Content, commitMessage, creds) {
+    const url = `https://api.github.com/repos/${creds.owner}/${creds.repo}/contents/${path}`;
+
+    // Check for existing SHA (needed to overwrite)
+    let sha;
+    const check = await fetch(`${url}?ref=${creds.branch}`, {
+      headers: { Authorization: `Bearer ${creds.token}`, 'X-GitHub-Api-Version': '2022-11-28' },
     });
+    if (check.ok) sha = (await check.json()).sha;
+
+    const body = { message: commitMessage, content: base64Content, branch: creds.branch };
+    if (sha) body.sha = sha;
+
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${creds.token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.github.v3+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`GitHub upload failed (${res.status}): ${err.message ?? path}`);
+    }
   }
 
-  // File → Uint8Array (replaces @ffmpeg/util fetchFile for local files)
-  async function toUint8Array(file) {
-    return new Uint8Array(await file.arrayBuffer());
-  }
-
-  async function uploadFileToGitHub(data, path, commitMessage) {
+  // Small files (thumbnails) go through the existing Netlify API endpoint
+  async function uploadThumbnail(file, path, commitMessage) {
     const form = new FormData();
-    form.append('file', new File([data], path.split('/').pop()));
+    form.append('file', file);
     form.append('path', path);
     form.append('message', commitMessage);
     const res = await fetch('/api/upload-hls-file', { method: 'POST', body: form });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error ?? `Upload failed (${res.status})`);
+      const { error } = await res.json().catch(() => ({}));
+      throw new Error(error ?? `Thumbnail upload failed (${res.status})`);
     }
   }
 
@@ -55,117 +75,53 @@
       const slug = slugify(title.trim());
       const cats = categories.split(',').map(c => c.trim()).filter(Boolean);
 
-      // ── 1. Load @ffmpeg/ffmpeg 0.12.x ────────────────────────────────────
-      //
-      // @ffmpeg/core@0.12.6 is the single-threaded build — no SharedArrayBuffer needed.
-      // Worker cross-origin restriction is bypassed by creating a same-origin blob that
-      // re-imports the real worker.js via a module import (CORS allowed by jsDelivr).
-      // coreURL / wasmURL are passed as raw CDN URLs so the worker fetches them via CORS
-      // rather than trying to import them from a main-thread blob (which breaks UMD exports).
-
-      status   = 'loading-ffmpeg';
-      progress = 0;
-      message  = 'Loading FFmpeg module…';
-
-      const FFMPEG = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
-      const CORE   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
-
-      const { FFmpeg } = await import(/* @vite-ignore */ `${FFMPEG}/index.js`);
-      const ffmpeg     = new FFmpeg();
-
-      // Blob shim that re-imports the real worker.js from CDN — stays same-origin
-      const classWorkerURL = URL.createObjectURL(
-        new Blob([`import '${FFMPEG}/worker.js'`], { type: 'text/javascript' })
-      );
-
-      progress = 20;
-      message  = 'Initializing FFmpeg (downloading ~30 MB first time, cached after)…';
-
-      await ffmpeg.load({
-        classWorkerURL,
-        coreURL: `${CORE}/ffmpeg-core.js`,
-        wasmURL: `${CORE}/ffmpeg-core.wasm`,
-      });
-
-      URL.revokeObjectURL(classWorkerURL);
-      progress = 100;
-
-      // ── 2. Detect video duration (before handing file to ffmpeg) ──────────
-      const duration = formatDuration(await getVideoDuration(videoFile));
-
-      // ── 3. Convert to HLS ─────────────────────────────────────────────────
-      status   = 'converting';
-      progress = 0;
-      message  = 'Converting to HLS… (this may take a minute)';
-
-      ffmpeg.on('progress', ({ progress: p }) => {
-        progress = Math.round(p * 100);
-      });
-
-      await ffmpeg.writeFile('input.mp4', await toUint8Array(videoFile));
-      await ffmpeg.exec([
-        '-i',    'input.mp4',
-        '-c:v',  'libx264',
-        '-preset', 'ultrafast',
-        '-crf',  '28',
-        '-c:a',  'aac',
-        '-b:a',  '128k',
-        '-hls_time',             '4',
-        '-hls_list_size',        '0',
-        '-hls_segment_filename', 'seg%03d.ts',
-        'index.m3u8',
-      ]);
-
-      const hlsFiles = (await ffmpeg.listDir('/'))
-        .filter(e => !e.isDir && (e.name.endsWith('.m3u8') || e.name.endsWith('.ts')));
-
-      // ── 4. Upload HLS files to GitHub ─────────────────────────────────────
       status   = 'uploading';
       progress = 0;
-      message  = `Uploading ${hlsFiles.length} HLS file(s) to GitHub…`;
+      message  = 'Authenticating…';
 
-      for (let i = 0; i < hlsFiles.length; i++) {
-        const { name } = hlsFiles[i];
-        message  = `Uploading ${name} (${i + 1} / ${hlsFiles.length})…`;
-        progress = Math.round((i / hlsFiles.length) * 100);
-        await uploadFileToGitHub(
-          await ffmpeg.readFile(name),
-          `public/videos/${slug}/${name}`,
-          `upload: HLS ${name} for "${title}"`
-        );
-      }
-      progress = 100;
+      // Get GitHub credentials from the authenticated API endpoint
+      const credsRes = await fetch('/api/get-upload-creds');
+      if (!credsRes.ok) throw new Error('Could not retrieve upload credentials — are you logged in?');
+      const creds = await credsRes.json();
 
-      // ── 5. Upload thumbnail ───────────────────────────────────────────────
+      // ── Thumbnail ─────────────────────────────────────────────────────────
       let thumb = '/images/cross.png';
       if (thumbFile) {
-        message = 'Uploading thumbnail…';
+        message  = 'Uploading thumbnail…';
+        progress = 10;
         const ext = thumbFile.name.split('.').pop() || 'jpg';
-        await uploadFileToGitHub(
-          thumbFile,
-          `public/images/${slug}-thumb.${ext}`,
-          `upload: thumbnail for "${title}"`
-        );
+        await uploadThumbnail(thumbFile, `public/images/${slug}-thumb.${ext}`, `upload: thumbnail for "${title}"`);
         thumb = `/images/${slug}-thumb.${ext}`;
       }
 
-      // ── 6. Register in videos.json ────────────────────────────────────────
-      status   = 'registering';
-      message  = 'Saving to videos.json…';
-      progress = 0;
+      // ── Metadata JSON (tiny, goes via browser→GitHub directly) ───────────
+      message  = 'Uploading metadata…';
+      progress = 20;
+      const meta = { title: title.trim(), categories: cats, thumb };
+      await githubPut(
+        `public/raw-videos/${slug}.json`,
+        btoa(JSON.stringify(meta)),
+        `upload: metadata for "${title}"`,
+        creds
+      );
 
-      const res = await fetch('/api/register-video', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim(), categories: cats,
-          url: `/videos/${slug}/index.m3u8`, thumb, duration,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to register video in videos.json');
+      // ── Raw video (large — uploaded directly from browser to GitHub) ──────
+      message  = 'Encoding video for upload…';
+      progress = 30;
+      const videoBase64 = await fileToBase64(videoFile);
 
-      status  = 'done';
-      message = `"${title}" uploaded! Netlify will rebuild in ~2 min.`;
+      message  = 'Uploading video to GitHub… (may take 30–60 s)';
+      progress = 40;
+      await githubPut(
+        `public/raw-videos/${slug}.mp4`,
+        videoBase64,
+        `upload: raw video for "${title}"`,
+        creds
+      );
+
+      progress = 100;
+      status   = 'done';
+      message  = `"${title}" uploaded! A GitHub Action will convert it to HLS. Video will appear on site in ~5 minutes.`;
 
     } catch (err) {
       status   = 'error';
@@ -178,7 +134,7 @@
     title = ''; categories = ''; videoFile = null; thumbFile = null;
   }
 
-  $: busy = status !== 'idle' && status !== 'done' && status !== 'error';
+  $: busy = status === 'uploading';
 </script>
 
 {#if status === 'done'}
@@ -212,14 +168,14 @@
         <label for="vu-video">Video File</label>
         <input id="vu-video" type="file" accept="video/*" required disabled={busy}
           on:change={e => videoFile = e.target.files[0]} />
-        <p class="hint">MP4 recommended. Converted to HLS in your browser — no server size limit.</p>
+        <p class="hint">MP4 recommended. Uploaded raw — a GitHub Action converts it to HLS automatically.</p>
       </div>
 
       <div class="field full-width">
         <label for="vu-thumb">Thumbnail <span class="optional">(optional)</span></label>
         <input id="vu-thumb" type="file" accept="image/*" disabled={busy}
           on:change={e => thumbFile = e.target.files[0]} />
-        <p class="hint">JPG or PNG, under 7 MB.</p>
+        <p class="hint">JPG or PNG, under 6 MB.</p>
       </div>
 
     </div>
@@ -233,7 +189,7 @@
     {/if}
 
     <button type="submit" class="btn-primary" style="margin-top:1rem" disabled={busy}>
-      {busy ? 'Working…' : 'Convert & Upload to GitHub'}
+      {busy ? 'Uploading…' : 'Upload Video'}
     </button>
   </form>
 {/if}
@@ -247,7 +203,7 @@
   .progress-pct  { font-size: 0.75rem; color: #475569; margin-top: 0.25rem; text-align: right; }
   .alert-ok  { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25);
                color: #86efac; padding: 0.75rem 1rem; border-radius: 0.5rem;
-               font-size: 0.875rem; display: flex; align-items: center; gap: 1rem; }
+               font-size: 0.875rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
   .alert-err { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
                color: #fca5a5; padding: 0.75rem 1rem; border-radius: 0.5rem;
                font-size: 0.875rem; display: flex; align-items: center; gap: 1rem; }

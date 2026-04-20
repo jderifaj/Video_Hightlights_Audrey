@@ -9,7 +9,8 @@
       "Bash(npm_config_arch=arm64 npm install)",
       "Read(//private/tmp/**)",
       "Bash(npm pack *)",
-      "Bash(tar -xzf /tmp/rollup-rollup-darwin-arm64-4.60.1.tgz -C node_modules/@rollup/rollup-darwin-arm64 --strip-components=1)"
+      "Bash(tar -xzf /tmp/rollup-rollup-darwin-arm64-4.60.1.tgz -C node_modules/@rollup/rollup-darwin-arm64 --strip-components=1)",
+      "WebFetch(domain:cdn.jsdelivr.net)"
     ]
   }
 }

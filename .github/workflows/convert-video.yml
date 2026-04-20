@@ -1,0 +1,36 @@
+name: Convert Video to HLS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/raw-videos/*.mp4'
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install FFmpeg
+        run: sudo apt-get update -y && sudo apt-get install -y ffmpeg
+
+      - name: Convert videos to HLS
+        run: node scripts/convert-videos.mjs
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git diff --staged --quiet || git commit -m "auto: convert video to HLS [skip ci]"
+          git push
