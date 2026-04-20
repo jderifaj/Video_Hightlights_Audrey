@@ -28,9 +28,8 @@ import "../styles/global.css";
 		class="bg-slate-950 text-slate-200 font-sans antialiased selection:bg-blue-500/30 selection:text-white min-h-screen flex flex-col"
 	>
 		<!-- Header / Hero Section -->
-		<header
-			class="relative overflow-hidden border-b border-white/5 py-10 md:py-14"
-		>
+		<header class="relative overflow-hidden border-b border-white/5 py-5 md:py-8 lg:py-14">
+
 			<!-- Background effects -->
 			<div class="absolute inset-0 z-0">
 				<div class="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-courage-navy/40 blur-[120px]"></div>
@@ -38,39 +37,42 @@ import "../styles/global.css";
 				<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?q=80&w=2000&auto=format&fit=crop')] bg-cover bg-center opacity-[0.03]"></div>
 			</div>
 
-			<div class="container mx-auto px-6 relative z-10 max-w-6xl">
-				<div class="flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
+			<div class="container mx-auto px-4 sm:px-6 relative z-10 max-w-6xl">
+				<div class="flex flex-col lg:flex-row items-center gap-6 lg:gap-12">
 
-					<!-- Left: Identity -->
-					<div class="flex-1 text-center lg:text-left">
-						<div class="flex flex-wrap gap-3 justify-center lg:justify-start mb-5">
+					<!-- Identity -->
+					<div class="flex-1 w-full text-center lg:text-left">
+
+						<!-- Class badge -->
+						<div class="flex justify-center lg:justify-start mb-3 lg:mb-5">
 							<span class="inline-block py-1 px-3 rounded-full bg-courage-navy/50 text-courage-blue text-xs font-semibold tracking-wider uppercase border border-courage-blue/30 shadow-sm shadow-courage-blue/10">
 								Class of {player.classYear}
 							</span>
 						</div>
 
-						<h1 class="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight flex flex-col md:flex-row items-center lg:justify-start justify-center gap-4">
+						<!-- Logo + Name: always side by side -->
+						<h1 class="flex flex-row items-center justify-center lg:justify-start gap-3 mb-2 lg:mb-4 tracking-tight font-bold text-white">
 							<img
 								src="/images/North_Carolina_Courage_logo.svg"
 								alt="NC Courage Logo"
-								class="h-14 md:h-16 w-auto drop-shadow-[0_0_15px_rgba(227,24,55,0.3)]"
+								class="h-10 md:h-14 lg:h-16 w-auto shrink-0 drop-shadow-[0_0_15px_rgba(227,24,55,0.3)]"
 							/>
-							<span set:html={player.name.replace(
+							<span class="text-3xl md:text-5xl lg:text-6xl" set:html={player.name.replace(
 								/(\S+)\s+(\S+)$/,
 								'$1 <span class="text-transparent bg-clip-text bg-linear-to-r from-courage-blue to-white">$2</span>'
 							)} />
 						</h1>
 
-						<p class="text-base md:text-lg text-slate-400 leading-relaxed">
+						<!-- Team / coach -->
+						<p class="text-sm md:text-base lg:text-lg text-slate-400 leading-relaxed">
 							{player.team} • Coached by {player.coach}
 						</p>
 					</div>
 
-					<!-- Right: Stats + Honors -->
-					<div class="shrink-0 w-full lg:w-auto lg:min-w-75">
-
+					<!-- Stats + Honors: desktop only (hidden on mobile, shown below video instead) -->
+					<div class="hidden lg:block shrink-0 lg:min-w-75">
 						<!-- Stat blocks -->
-						<div class="fade-in-item flex gap-0 justify-center lg:justify-start mb-6 rounded-xl overflow-hidden border border-slate-700/60 divide-x divide-slate-700/60" style="animation-delay: 0.2s">
+						<div class="fade-in-item flex mb-6 rounded-xl overflow-hidden border border-slate-700/60 divide-x divide-slate-700/60" style="animation-delay: 0.2s">
 							<div class="flex-1 text-center px-4 py-3 bg-slate-800/40">
 								<p class="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-500 mb-1">GPA</p>
 								<p class="text-2xl font-bold text-white">{player.gpa}</p>
@@ -85,35 +87,63 @@ import "../styles/global.css";
 							</div>
 						</div>
 
-						<!-- Honors & Achievements -->
+						<!-- Honors -->
 						<div class="bg-slate-800/30 border border-slate-700/50 rounded-xl p-4">
 							<h3 class="fade-in-item text-[10px] font-bold tracking-[0.2em] uppercase text-courage-red mb-3" style="animation-delay: 0.4s">
 								Honors &amp; Achievements
 							</h3>
 							<ul class="space-y-2">
 								{player.honors.map((honor, i) => (
-									<li
-										class="fade-in-item flex items-start gap-2 text-sm text-slate-300"
-										style={`animation-delay: ${0.55 + i * 0.15}s`}
-									>
+									<li class="fade-in-item flex items-start gap-2 text-sm text-slate-300" style={`animation-delay: ${0.55 + i * 0.15}s`}>
 										<span class="text-courage-blue mt-1 text-[8px]">◆</span>
 										<span>{honor}</span>
 									</li>
 								))}
 							</ul>
 						</div>
-
 					</div>
+
 				</div>
 			</div>
 		</header>
 
 		<!-- Main Content Area -->
-		<main class="flex-grow py-12 md:py-16 px-4 sm:px-6">
-			<VideoPlaylist
-				videos={videos}
-				client:load
-			/>
+		<main class="flex-grow py-8 md:py-12 lg:py-16 px-4 sm:px-6">
+			<VideoPlaylist videos={videos} client:load />
+
+			<!-- Stats + Honors: mobile only, shown below the video -->
+			<div class="lg:hidden mt-10 max-w-7xl mx-auto">
+				<!-- Stat blocks -->
+				<div class="flex mb-5 rounded-xl overflow-hidden border border-slate-700/60 divide-x divide-slate-700/60">
+					<div class="flex-1 text-center px-4 py-3 bg-slate-800/40">
+						<p class="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-500 mb-1">GPA</p>
+						<p class="text-2xl font-bold text-white">{player.gpa}</p>
+					</div>
+					<div class="flex-1 text-center px-4 py-3 bg-slate-800/40">
+						<p class="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-500 mb-1">Height</p>
+						<p class="text-2xl font-bold text-white">{player.height}</p>
+					</div>
+					<div class="flex-1 text-center px-4 py-3 bg-slate-800/40">
+						<p class="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-500 mb-1">Major</p>
+						<p class="text-xl font-bold text-white">{player.major}</p>
+					</div>
+				</div>
+
+				<!-- Honors -->
+				<div class="bg-slate-800/30 border border-slate-700/50 rounded-xl p-4">
+					<h3 class="text-[10px] font-bold tracking-[0.2em] uppercase text-courage-red mb-3">
+						Honors &amp; Achievements
+					</h3>
+					<ul class="space-y-2">
+						{player.honors.map((honor) => (
+							<li class="flex items-start gap-2 text-sm text-slate-300">
+								<span class="text-courage-blue mt-1 text-[8px]">◆</span>
+								<span>{honor}</span>
+							</li>
+						))}
+					</ul>
+				</div>
+			</div>
 		</main>
 
 		<!-- Footer -->
