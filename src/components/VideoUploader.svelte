@@ -70,12 +70,15 @@
       // vite-ignore prevents Vite from trying to resolve this CDN URL at build time
       const { FFmpeg } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
 
-      const ffmpeg = new FFmpeg();
-      const base   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+      const ffmpeg     = new FFmpeg();
+      const ffmpegBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+      const coreBase   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
 
+      // classWorkerURL must be a blob URL (same-origin) — CDN workers are blocked by browsers
       await ffmpeg.load({
-        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`,   'text/javascript'),
-        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+        classWorkerURL: await toBlobURL(`${ffmpegBase}/worker.js`,  'text/javascript'),
+        coreURL:        await toBlobURL(`${coreBase}/ffmpeg-core.js`,   'text/javascript'),
+        wasmURL:        await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
       });
 
       // ── 2. Convert to HLS ────────────────────────────────────────────────
