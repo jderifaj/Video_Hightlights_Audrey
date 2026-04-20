@@ -2,6 +2,7 @@
 export const prerender = false;
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import videos from '../../data/videos.json';
+import VideoUploader from '../../components/VideoUploader.svelte';
 
 const success = Astro.url.searchParams.get('success');
 const error   = Astro.url.searchParams.get('error');
@@ -40,38 +41,7 @@ const error   = Astro.url.searchParams.get('error');
   <!-- Add video form -->
   <div class="section-card">
     <p class="section-heading">Add a Video</p>
-    <form method="POST" action="/api/add-video" enctype="multipart/form-data">
-
-      <div class="form-grid">
-        <div class="field full-width">
-          <label for="title">Title</label>
-          <input id="title" name="title" type="text" placeholder="Nice Through Ball" required />
-        </div>
-
-        <div class="field full-width">
-          <label for="categories">Categories</label>
-          <input id="categories" name="categories" type="text" placeholder="passing, hustle" />
-          <p class="hint">Comma-separated. Matching filter buttons appear automatically.</p>
-        </div>
-
-        <div class="field full-width">
-          <label for="videoFilename">Video Filename</label>
-          <input id="videoFilename" name="videoFilename" type="text" placeholder="myvideo.mp4" required />
-          <p class="hint">
-            Commit the <code>.mp4</code> file to <code>public/videos/</code> in your repo first,
-            then enter its filename here (e.g. <code>myvideo.mp4</code>).
-          </p>
-        </div>
-
-        <div class="field full-width">
-          <label for="thumbnail">Thumbnail Image</label>
-          <input id="thumbnail" name="thumbnail" type="file" accept="image/*" />
-          <p class="hint">Upload a JPG or PNG (under 7 MB). It will be committed to <code>public/images/</code>.</p>
-        </div>
-      </div>
-
-      <button type="submit" class="btn-primary" style="margin-top:1rem">Add Video & Commit to GitHub</button>
-    </form>
+    <VideoUploader client:load />
   </div>
 </AdminLayout>
 
