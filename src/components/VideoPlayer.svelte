@@ -1,5 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
+  import Hls from 'hls.js';
 
   export let activeVideo;
   export let autoplay = true;
@@ -9,12 +10,46 @@
 
   let videoEl;
   let rafId = null;
+  let hlsInstance = null;
 
   $: isYoutube = activeVideo?.url?.includes('youtube.com/embed/');
 
+  // Re-attach HLS / src whenever the active video changes
+  $: if (videoEl && activeVideo) {
+    attachSource(activeVideo.url);
+  }
+
+  // When autoplay is toggled on while video is loaded and paused, start playing
   $: if (autoplay && videoEl && videoEl.paused && videoEl.readyState >= 2) {
     videoEl.play().catch(() => {});
   }
+
+  function attachSource(url) {
+    destroyHls();
+    if (!url) return;
+
+    if (url.endsWith('.m3u8')) {
+      if (Hls.isSupported()) {
+        hlsInstance = new Hls({ startLevel: -1 }); // auto quality
+        hlsInstance.loadSource(url);
+        hlsInstance.attachMedia(videoEl);
+      } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari natively supports HLS
+        videoEl.src = url;
+      }
+    } else {
+      videoEl.src = url;
+    }
+  }
+
+  function destroyHls() {
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
+  }
+
+  // --- Progress RAF loop ---
 
   function startProgressLoop() {
     if (typeof requestAnimationFrame === 'undefined') return;
@@ -33,7 +68,12 @@
     rafId = null;
   }
 
-  onDestroy(stopProgressLoop);
+  onDestroy(() => {
+    stopProgressLoop();
+    destroyHls();
+  });
+
+  // --- Video event handlers ---
 
   function handleLoadedMetadata() {
     if (!videoEl || !activeVideo) return;
@@ -44,9 +84,7 @@
       ondurationload?.({ url: activeVideo.url, duration: `${m}:${s}` });
     }
     startProgressLoop();
-    if (autoplay) {
-      videoEl.play().catch(() => {});
-    }
+    if (autoplay) videoEl.play().catch(() => {});
   }
 
   function handleEnded() {
@@ -67,11 +105,12 @@
         allowfullscreen
       ></iframe>
     {:else}
+      <!-- src is managed imperatively via attachSource(); do not set src attribute directly -->
       <video
         bind:this={videoEl}
         class="w-full h-full object-cover"
-        src={activeVideo.url}
         controls
+        playsinline
         poster={activeVideo.thumb}
         on:loadedmetadata={handleLoadedMetadata}
         on:ended={handleEnded}

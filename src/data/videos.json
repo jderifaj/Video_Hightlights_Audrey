@@ -3,7 +3,7 @@
     "id": "1",
     "title": "Fake Shot",
     "categories": ["shooting"],
-    "url": "/videos/niceshot.mov",
+    "url": "/videos/niceshot/index.m3u8",
     "thumb": "/images/fake-shot-thumb.png",
     "duration": "0:35"
   },
@@ -11,7 +11,7 @@
     "id": "2",
     "title": "Nice Tackle",
     "categories": ["defense"],
-    "url": "/videos/defensiveHighlight.mp4",
+    "url": "/videos/defensiveHighlight/index.m3u8",
     "thumb": "/images/defensive-tackle-thumb.png",
     "duration": "1:45"
   },
@@ -19,7 +19,7 @@
     "id": "3",
     "title": "Cross",
     "categories": ["Cross"],
-    "url": "/videos/cross.mp4",
+    "url": "/videos/cross/index.m3u8",
     "thumb": "/images/cross.png",
     "duration": "2:15"
   },
@@ -27,7 +27,7 @@
     "id": "4",
     "title": "Tracking Back",
     "categories": ["hustle", "passing"],
-    "url": "/videos/active.mp4",
+    "url": "/videos/active/index.m3u8",
     "thumb": "/images/cross.png",
     "duration": "0:30"
   },
@@ -35,7 +35,7 @@
     "id": "5",
     "title": "Turnout",
     "categories": ["turnout"],
-    "url": "/videos/turnout.mp4",
+    "url": "/videos/turnout/index.m3u8",
     "thumb": "/images/cross.png",
     "duration": "0:30"
   }

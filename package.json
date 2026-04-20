@@ -17,6 +17,7 @@
     "@tailwindcss/vite": "^4.2.2",
     "astro": "^6.1.5",
     "gsap": "^3.14.2",
+    "hls.js": "^1.6.16",
     "svelte": "^5.55.3",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3"
