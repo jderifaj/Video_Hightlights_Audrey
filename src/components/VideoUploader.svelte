@@ -65,21 +65,30 @@
       // ── 1. Load ffmpeg-wasm from CDN (bypasses Vite bundling) ────────────
       status   = 'loading-ffmpeg';
       progress = 0;
-      message  = 'Loading FFmpeg…';
+      message  = 'Loading FFmpeg module…';
 
-      // vite-ignore prevents Vite from trying to resolve this CDN URL at build time
       const { FFmpeg } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-
       const ffmpeg     = new FFmpeg();
       const ffmpegBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
       const coreBase   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
 
-      // classWorkerURL must be a blob URL (same-origin) — CDN workers are blocked by browsers
-      await ffmpeg.load({
-        classWorkerURL: await toBlobURL(`${ffmpegBase}/worker.js`,  'text/javascript'),
-        coreURL:        await toBlobURL(`${coreBase}/ffmpeg-core.js`,   'text/javascript'),
-        wasmURL:        await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
-      });
+      // Each toBlobURL fetches the file from CDN — show progress so it doesn't look frozen
+      message = 'Downloading FFmpeg worker… (1 of 3)';
+      progress = 10;
+      const classWorkerURL = await toBlobURL(`${ffmpegBase}/worker.js`, 'text/javascript');
+
+      message = 'Downloading FFmpeg core… (2 of 3)';
+      progress = 30;
+      const coreURL = await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript');
+
+      message = 'Downloading FFmpeg WASM (~30 MB)… (3 of 3)';
+      progress = 50;
+      const wasmURL = await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm');
+
+      message = 'Initializing FFmpeg…';
+      progress = 90;
+      await ffmpeg.load({ classWorkerURL, coreURL, wasmURL });
+      progress = 100;
 
       // ── 2. Convert to HLS ────────────────────────────────────────────────
       status  = 'converting';
