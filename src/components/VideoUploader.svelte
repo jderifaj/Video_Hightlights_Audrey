@@ -26,9 +26,21 @@
       const vid = document.createElement('video');
       vid.preload = 'metadata';
       vid.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(vid.duration); };
-      vid.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
+      vid.onerror          = () => { URL.revokeObjectURL(url); resolve(0); };
       vid.src = url;
     });
+  }
+
+  // Fetches a remote URL and returns a local blob URL — keeps WASM off Vite's bundle
+  async function toBlobURL(url, mimeType) {
+    const buf  = await fetch(url).then(r => r.arrayBuffer());
+    const blob = new Blob([buf], { type: mimeType });
+    return URL.createObjectURL(blob);
+  }
+
+  // Reads a File into a Uint8Array for ffmpeg.writeFile()
+  async function fetchFile(file) {
+    return new Uint8Array(await file.arrayBuffer());
   }
 
   async function uploadFileToGitHub(blob, path, commitMessage) {
@@ -50,13 +62,13 @@
       const slug = slugify(title.trim());
       const cats = categories.split(',').map(c => c.trim()).filter(Boolean);
 
-      // ── 1. Load ffmpeg-wasm ──────────────────────────────────────────────
+      // ── 1. Load ffmpeg-wasm from CDN (bypasses Vite bundling) ────────────
       status   = 'loading-ffmpeg';
       progress = 0;
       message  = 'Loading FFmpeg…';
 
-      const { FFmpeg }    = await import('@ffmpeg/ffmpeg');
-      const { toBlobURL, fetchFile } = await import('@ffmpeg/util');
+      // vite-ignore prevents Vite from trying to resolve this CDN URL at build time
+      const { FFmpeg } = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
 
       const ffmpeg = new FFmpeg();
       const base   = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
@@ -80,19 +92,17 @@
         '-crf',  '28',
         '-c:a',  'aac',
         '-b:a',  '128k',
-        '-hls_time',        '4',
-        '-hls_list_size',   '0',
+        '-hls_time',             '4',
+        '-hls_list_size',        '0',
         '-hls_segment_filename', 'seg%03d.ts',
         'index.m3u8',
       ]);
 
-      // Collect output files
       const dir      = await ffmpeg.listDir('/');
       const hlsFiles = dir.filter(e => !e.isDir && (e.name.endsWith('.m3u8') || e.name.endsWith('.ts')));
 
-      // ── 3. Get duration ──────────────────────────────────────────────────
-      const rawSecs  = await getVideoDuration(videoFile);
-      const duration = formatDuration(rawSecs);
+      // ── 3. Detect duration ───────────────────────────────────────────────
+      const duration = formatDuration(await getVideoDuration(videoFile));
 
       // ── 4. Upload HLS files ──────────────────────────────────────────────
       status   = 'uploading';
@@ -101,10 +111,9 @@
 
       for (let i = 0; i < hlsFiles.length; i++) {
         const { name } = hlsFiles[i];
-        message  = `Uploading ${name} (${i + 1}/${hlsFiles.length})…`;
-        progress = Math.round(((i) / hlsFiles.length) * 100);
-        const data = await ffmpeg.readFile(name);
-        await uploadFileToGitHub(data, `public/videos/${slug}/${name}`, `upload: HLS ${name} for "${title}"`);
+        message  = `Uploading ${name} (${i + 1} / ${hlsFiles.length})…`;
+        progress = Math.round((i / hlsFiles.length) * 100);
+        await uploadFileToGitHub(await ffmpeg.readFile(name), `public/videos/${slug}/${name}`, `upload: HLS ${name} for "${title}"`);
       }
       progress = 100;
 
@@ -113,21 +122,21 @@
       if (thumbFile) {
         message = 'Uploading thumbnail…';
         const ext = thumbFile.name.split('.').pop() || 'jpg';
-        const gitPath = `public/images/${slug}-thumb.${ext}`;
-        await uploadFileToGitHub(thumbFile, gitPath, `upload: thumbnail for "${title}"`);
+        await uploadFileToGitHub(thumbFile, `public/images/${slug}-thumb.${ext}`, `upload: thumbnail for "${title}"`);
         thumb = `/images/${slug}-thumb.${ext}`;
       }
 
       // ── 6. Register in videos.json ───────────────────────────────────────
       status  = 'registering';
       message = 'Saving to videos.json…';
+      progress = 0;
 
       const res = await fetch('/api/register-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim(), categories: cats, url: `/videos/${slug}/index.m3u8`, thumb, duration }),
       });
-      if (!res.ok) throw new Error('Failed to register video');
+      if (!res.ok) throw new Error('Failed to register video in videos.json');
 
       status  = 'done';
       message = `"${title}" uploaded! Netlify will rebuild in ~2 min.`;
@@ -175,11 +184,11 @@
         <label for="vu-video">Video File</label>
         <input id="vu-video" type="file" accept="video/*" required disabled={busy}
           on:change={e => videoFile = e.target.files[0]} />
-        <p class="hint">MP4 recommended. Converted to HLS in your browser before uploading.</p>
+        <p class="hint">MP4 recommended. Converted to HLS in your browser — no server upload size limit.</p>
       </div>
 
       <div class="field full-width">
-        <label for="vu-thumb">Thumbnail Image <span class="optional">(optional)</span></label>
+        <label for="vu-thumb">Thumbnail <span class="optional">(optional)</span></label>
         <input id="vu-thumb" type="file" accept="image/*" disabled={busy}
           on:change={e => thumbFile = e.target.files[0]} />
         <p class="hint">JPG or PNG, under 7 MB.</p>
@@ -190,9 +199,7 @@
     {#if busy}
       <div class="progress-wrap">
         <p class="progress-msg">{message}</p>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width:{progress}%"></div>
-        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
         <p class="progress-pct">{progress}%</p>
       </div>
     {/if}
